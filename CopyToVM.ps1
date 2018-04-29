@@ -31,40 +31,80 @@ Copy-ToVM -VMMServer VMMserver01 -VMname VM01  -SourcePath 'C:\Temp\vmfiles\file
           )
 
 
-Begin{}
     
-
-Process{
-
-# Check that VM is Server 2016 (Powershell Direct Compatible)
-    
-        $IsServer2016 = Get-SCVirtualMachine -VMMServer $VMMServer -Name $VMname | select OperatingSystem
-                if   ($IsServer2016.OperatingSystem.name -like '*2016*')
-                 {
-                     Write-Host -ForegroundColor Yellow "$VMname is a 2016 Server .... script will continue"
-                 }
-                else 
-                 {
-                     Write-Host -ForegroundColor Red "$VMname is not Server 2016, it's not gonna work, script will now Exit.......:)"
-                     Break
-                 }
+Begin{
 
 # Assign initial Variables (Host that the VM resides on)
 
         $Hostname = Get-SCVirtualMachine -VMMServer $VMMServer -name $VMname | select -ExpandProperty hostname
-      
+
+# Check that VM is Server 2016 (Powershell Direct Compatible)
+    
+        $IsServer2016 = Get-SCVirtualMachine -VMMServer $VMMServer -Name $VMname | select OperatingSystem
+                If   ($IsServer2016.OperatingSystem.name -like '*2016*')
+                 {
+                     Write-Host -ForegroundColor Yellow "$VMname is a 2016 Server .... script will continue " 
+                 }
+                Else 
+                 {
+                     Write-Host -ForegroundColor Red "$VMname is not Server 2016, it's not gonna work, script will now Exit."
+                     Break
+                 }
+
+# Check for sufficient disk space on host
+
+        $SrcFileSize = [Math]::Round((Get-ChildItem $SourcePath | Measure-Object -Property length -Sum | select -ExpandProperty sum)/1GB,2)
+        $HostDriveSize = [Math]::Round((Get-CimInstance -ComputerName $Hostname -Query "Select * from win32_logicaldisk WHERE DeviceID = 'C:'" | select -ExpandProperty FreeSpace)/1GB,2)
+
+                If  (($HostDriveSize - $SrcFileSize) -gt 5)
+                 {
+                     Write-host -ForegroundColor Yellow "`n More than 5GB free on $Hostname C Dive after File Copy ("$HostDriveSize GB Free") .... Script will continue"
+                 }
+                Else 
+                 {
+                     Write-Host -ForegroundColor Red "`n Less than 5GB free space after copy on C Drive on $Hostname ..... clear some space first .... Script will Exit"
+                     Break
+                 }
+
+# Check for sufficient space on VM
+
+       $VMDiskSpace = Invoke-Command  -ComputerName $Hostname -ScriptBlock{ 
+                                                  
+                      $VMSession = New-PSSession -VMName $Using:VMname -Credential $Using:VMCredentialUserName
+
+                      Invoke-Command -Session $VMSession -ScriptBlock{
+                      [Math]::Round((Get-CimInstance -Query "Select * from win32_logicaldisk WHERE DeviceID = 'C:'" | select -ExpandProperty FreeSpace)/1GB,2)}
+
+                      } #Invoke
+
+                If  (($VMDiskSpace - $SrcFileSize) -gt 5)
+                 {
+                     Write-host -ForegroundColor Yellow "`n More than 5GB free on $VMname C Dive after File Copy ("$VMDiskSpace GB Free") .... Script will continue"
+                 }
+                Else 
+                 {
+                     Write-Host -ForegroundColor Red "`n Less than 5GB free space after copy on C Drive on $VMname ..... clear some space first .... Script will Exit"
+                     Break
+                 }
+        
+
+}  # Begin
+    
+
+Process{
+
 
 # Add c:\Temp\VMFiles folder to Host where VM resides
        
-        New-Item -ItemType Directory -Path \\$Hostname\c$\Temp\VMfiles -Force
+        New-Item -ItemType Directory -Path \\$Hostname\c$\Temp\VMfiles -Force | Out-Null
 
 
-        Write-Host -ForegroundColor Green "Added VMFiles Folder to C:\Temp on $Hostname"
+        Write-Host -ForegroundColor Green "`n VMFiles copied to C:\Temp on $Hostname"
 
 
 # Copying Files from Source Patch to Host where VM resides.
 
-        Write-Host -ForegroundColor DarkCyan "Copying files from $SourcePath to \\$Hostname\C$\Temp\VMFiles"
+        Write-Host -ForegroundColor Green "`n Copying files from $SourcePath to \\$Hostname\C$\Temp\VMFiles"
 
                 
         Copy-Item -Path $SourcePath -Recurse -Destination \\$Hostname\C$\Temp\VMFiles -force  
@@ -72,15 +112,13 @@ Process{
     
 # Remote Session to Host and VM for File Copy
 
-        Write-Host -ForegroundColor Gray "Copying VMFiles Folder to $VMName into C:\Temp"
+        Write-Host -ForegroundColor Green "`n Copying VMFiles Folder to $VMName into C:\Temp"
 
-        Invoke-Command  -ComputerName $Hostname -ScriptBlock{ 
-                 
-                                 
+        Invoke-Command  -ComputerName $Hostname -ScriptBlock { 
+                                                  
                     $VMSession = New-PSSession -VMName $using:VMname -Credential $using:VMCredentialUserName
                     Copy-Item -Path C:\Temp\VMFiles -Recurse -ToSession $VMSession -Destination C:\Temp -Force 
-                      
-               
+                               
                     } # Invoke
        
        
@@ -90,5 +128,5 @@ Process{
 End{}
 
 
-}
+}  #Funtcion
 
