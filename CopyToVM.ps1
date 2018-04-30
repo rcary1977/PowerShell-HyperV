@@ -31,23 +31,23 @@ Copy-ToVM -VMMServer VMMserver01 -VMname VM01  -SourcePath 'C:\Temp\vmfiles\file
           )
 
 
-    
 Begin{
 
 # Assign initial Variables (Host that the VM resides on)
 
         $Hostname = Get-SCVirtualMachine -VMMServer $VMMServer -name $VMname | select -ExpandProperty hostname
+        
 
 # Check that VM is Server 2016 (Powershell Direct Compatible)
     
         $IsServer2016 = Get-SCVirtualMachine -VMMServer $VMMServer -Name $VMname | select OperatingSystem
                 If   ($IsServer2016.OperatingSystem.name -like '*2016*')
                  {
-                     Write-Host -ForegroundColor Yellow "$VMname is a 2016 Server .... script will continue " 
+                     Write-Host -ForegroundColor Yellow "`n $VMname is a 2016 Server .... script will continue " 
                  }
                 Else 
                  {
-                     Write-Host -ForegroundColor Red "$VMname is not Server 2016, it's not gonna work, script will now Exit."
+                     Write-Host -ForegroundColor Red "`n $VMname is not Server 2016, it's not gonna work, script will now Exit."
                      Break
                  }
 
