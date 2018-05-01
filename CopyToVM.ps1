@@ -32,43 +32,82 @@ Copy-ToVM -VMMServer VMMserver01 -VMname VM01  -SourcePath 'C:\Temp\vmfiles\file
 
 
 Begin{
+$ErrorActionPreference = 'Stop'
 
 # Assign initial Variables (Host that the VM resides on)
 
+    Try {
+
         $Hostname = Get-SCVirtualMachine -VMMServer $VMMServer -name $VMname | select -ExpandProperty hostname
+
+        }  #Try
+
+  Catch {
+     
+           Write-Warning  "Server query failed, $_.Exception.Message "
+           Break
+
+        }  #Catch
         
 
-# Check that VM is Server 2016 (Powershell Direct Compatible)
+# Check that VM is Server 2016 (Powershell Direct Compatible) and has a valid name
     
-        $IsServer2016 = Get-SCVirtualMachine -VMMServer $VMMServer -Name $VMname | select OperatingSystem
+        $IsServer2016 = Get-SCVirtualMachine -VMMServer $VMMServer -Name $VMname | select OperatingSystem 
+
                 If   ($IsServer2016.OperatingSystem.name -like '*2016*')
+
                  {
                      Write-Host -ForegroundColor Yellow "`n $VMname is a 2016 Server .... script will continue " 
                  }
-                Else 
+
+                ElseIf (!$IsServer2016)
+
                  {
-                     Write-Host -ForegroundColor Red "`n $VMname is not Server 2016, it's not gonna work, script will now Exit."
+                    Write-Host -ForegroundColor Red "`n $VMname is not a valid servername, script will Exit."
+                    Break    
+                 }
+
+                Else 
+
+                 {
+                     Write-Host -ForegroundColor Red "`n $VMname is not Server 2016 it's not gonna work, script will Exit."
                      Break
                  }
+   
 
 # Check for sufficient disk space on host
 
-        $SrcFileSize = [Math]::Round((Get-ChildItem $SourcePath | Measure-Object -Property length -Sum | select -ExpandProperty sum)/1GB,2)
-        $HostDriveSize = [Math]::Round((Get-CimInstance -ComputerName $Hostname -Query "Select * from win32_logicaldisk WHERE DeviceID = 'C:'" | select -ExpandProperty FreeSpace)/1GB,2)
+     Try { 
+             $SrcFileSize = [Math]::Round((Get-ChildItem $SourcePath | Measure-Object -Property length -Sum | select -ExpandProperty sum)/1GB,2)
+             $HostDriveSize = [Math]::Round((Get-CimInstance -ComputerName $Hostname -Query "Select * from win32_logicaldisk WHERE DeviceID = 'C:'" | select -ExpandProperty FreeSpace)/1GB,2)
 
                 If  (($HostDriveSize - $SrcFileSize) -gt 5)
+
                  {
-                     Write-host -ForegroundColor Yellow "`n More than 5GB free on $Hostname C Dive after File Copy ("$HostDriveSize GB Free") .... Script will continue"
+                     Write-host -ForegroundColor Yellow "`n More than 5GB free on $Hostname C Dive after File Copy ("$HostDriveSize GB Free ") .... Script will continue"
                  }
+
                 Else 
+
                  {
                      Write-Host -ForegroundColor Red "`n Less than 5GB free space after copy on C Drive on $Hostname ..... clear some space first .... Script will Exit"
                      Break
                  }
 
+         }  #Try
+
+   Catch {
+     
+             Write-Warning  "Server query failed, $_.Exception.Message "
+             Break
+
+         }  #Catch
+         
+
 # Check for sufficient space on VM
 
-       $VMDiskSpace = Invoke-Command  -ComputerName $Hostname -ScriptBlock{ 
+     Try {   
+                $VMDiskSpace = Invoke-Command  -ComputerName $Hostname -ScriptBlock{ 
                                                   
                       $VMSession = New-PSSession -VMName $Using:VMname -Credential $Using:VMCredentialUserName
 
@@ -79,14 +118,21 @@ Begin{
 
                 If  (($VMDiskSpace - $SrcFileSize) -gt 5)
                  {
-                     Write-host -ForegroundColor Yellow "`n More than 5GB free on $VMname C Dive after File Copy ("$VMDiskSpace GB Free") .... Script will continue"
+                     Write-host -ForegroundColor Yellow "`n More than 5GB free on $VMname C Dive after File Copy ("$VMDiskSpace GB Free ") .... Script will continue"
                  }
                 Else 
                  {
                      Write-Host -ForegroundColor Red "`n Less than 5GB free space after copy on C Drive on $VMname ..... clear some space first .... Script will Exit"
                      Break
                  }
-        
+
+        }  #Try
+
+  Catch {
+           Write-Warning  "Server query failed, $_.Exception.Message "
+           Break
+
+        }  #Catch
 
 }  # Begin
     
@@ -95,37 +141,83 @@ Process{
 
 
 # Add c:\Temp\VMFiles folder to Host where VM resides
+
+    Try {
        
-        New-Item -ItemType Directory -Path \\$Hostname\c$\Temp\VMfiles -Force | Out-Null
+            New-Item -ItemType Directory -Path \\$Hostname\c$\Temp\VMfiles -Force | Out-Null
+            Write-Host -ForegroundColor Green "`n VMFiles Folder created in C:\Temp on $Hostname"
 
+        }   #Try
 
-        Write-Host -ForegroundColor Green "`n VMFiles copied to C:\Temp on $Hostname"
+  Catch {
+            Write-Warning  "Server query failed, $_.Exception.Message "
+            Break
 
+        }   #Catch
 
 # Copying Files from Source Patch to Host where VM resides.
 
-        Write-Host -ForegroundColor Green "`n Copying files from $SourcePath to \\$Hostname\C$\Temp\VMFiles"
+  
+    Try {
 
-                
-        Copy-Item -Path $SourcePath -Recurse -Destination \\$Hostname\C$\Temp\VMFiles -force  
-                
+           Write-Host -ForegroundColor Green "`n Copying files from $SourcePath to \\$Hostname\C$\Temp\VMFiles"
+           Copy-Item -Path $SourcePath -Recurse -Destination \\$Hostname\C$\Temp\VMFiles -force  
+
+        }   #Try
+
+  Catch {
+            Write-Warning  "Server query failed, $_.Exception.Message "
+            Break
+   
+        }   #Catch         
     
 # Remote Session to Host and VM for File Copy
 
-        Write-Host -ForegroundColor Green "`n Copying VMFiles Folder to $VMName into C:\Temp"
+     Try {
 
-        Invoke-Command  -ComputerName $Hostname -ScriptBlock { 
+           Write-Host -ForegroundColor Green "`n Copying VMFiles Folder to $VMName into C:\Temp"
+
+           Invoke-Command  -ComputerName $Hostname -ScriptBlock { 
                                                   
                     $VMSession = New-PSSession -VMName $using:VMname -Credential $using:VMCredentialUserName
                     Copy-Item -Path C:\Temp\VMFiles -Recurse -ToSession $VMSession -Destination C:\Temp -Force 
                                
                     } # Invoke
+
+         }   #Try
+
+   Catch {
+
+            Write-Warning  "Server query failed, $_.Exception.Message "
+            Break
+
+         }   #Cacth
        
        
                  
 } # Process
 
-End{}
+End {
+
+          Write-Host -ForegroundColor White -BackgroundColor DarkGreen "`n Files have been copied to the VMFiles Folder under C:\Temp, on $VMName"
+
+# Cleanup Tasks
+    Try { 
+
+          Remove-item \\$Hostname\c$\Temp\VMfiles -Recurse -Force -Confirm:$false
+          Write-Host -ForegroundColor White -BackgroundColor Blue "`n VMFiles Folder has been deleted under C:\Temp on $Hostname .... This folder still remains on $VMname though"
+
+        }
+
+  Catch {
+
+           Write-Warning  "Server query failed, $_.Exception.Message "
+           Break
+
+        }  #Catch
+
+
+    }  #End
 
 
 }  #Funtcion
